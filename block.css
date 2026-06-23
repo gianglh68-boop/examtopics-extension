@@ -1,0 +1,51 @@
+/* Conservative CSS: only restore scroll. Element hiding is done in JS by text-match,
+   to avoid removing legitimate page content. */
+
+html.modal-open,
+body.modal-open {
+  overflow: auto !important;
+  padding-right: 0 !important;
+}
+
+[data-killed-by-popup-killer="1"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#etk-nav-wrapper {
+  position: fixed !important;
+  right: 16px !important;
+  bottom: 16px !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  gap: 8px !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+#etk-nav-wrapper .etk-nav-btn {
+  padding: 10px 16px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: #fff !important;
+  background: #f6821f !important;
+  border: none !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+  cursor: pointer !important;
+  line-height: 1 !important;
+  opacity: 0.92 !important;
+  transition: opacity 0.15s ease, transform 0.15s ease !important;
+}
+
+#etk-nav-wrapper .etk-nav-btn:hover {
+  opacity: 1 !important;
+  transform: translateY(-1px) !important;
+}
+
+#etk-nav-wrapper .etk-nav-btn:disabled {
+  background: #999 !important;
+  cursor: not-allowed !important;
+  opacity: 0.6 !important;
+  transform: none !important;
+}

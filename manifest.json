@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "ExamTopics Popup Killer",
+  "version": "1.0.0",
+  "description": "Tắt popup 'This section is not available anymore' và các overlay khác trên examtopics.com",
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.examtopics.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["block.css"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_title": "ExamTopics Popup Killer (đang hoạt động)"
+  }
+}

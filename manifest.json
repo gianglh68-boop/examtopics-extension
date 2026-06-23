@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ExamTopics Popup Killer",
-  "version": "1.1.0",
-  "description": "Tắt popup chặn nội dung, điều hướng Prev/Next và lưu câu hỏi vào bank theo mã đề trên examtopics.com",
+  "version": "1.2.0",
+  "description": "Tắt popup, Prev/Next, lưu câu hỏi vào bank theo mã đề và auto-loop autosave hàng loạt trên examtopics.com",
   "permissions": ["storage"],
   "content_scripts": [
     {

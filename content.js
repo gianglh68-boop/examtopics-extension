@@ -4,6 +4,8 @@
   const POPUP_TEXT = 'this section is not available anymore';
   const ALT_POPUP_TEXT = 'please use the main exam page';
   const BANK_KEY = 'etkBank';
+  const LOOP_KEY = 'etkLoop';
+  let loopTickFired = false;
 
   let busy = false;
   let throttle = 0;
@@ -425,6 +427,235 @@
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
   }
 
+  function loadLoop() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get(LOOP_KEY, (r) => resolve((r && r[LOOP_KEY]) || null));
+      } catch (_) { resolve(null); }
+    });
+  }
+
+  function saveLoopState(state) {
+    return new Promise((resolve) => {
+      try { chrome.storage.local.set({ [LOOP_KEY]: state }, () => resolve()); }
+      catch (_) { resolve(); }
+    });
+  }
+
+  function clearLoop() {
+    return new Promise((resolve) => {
+      try { chrome.storage.local.remove(LOOP_KEY, () => resolve()); }
+      catch (_) { resolve(); }
+    });
+  }
+
+  function waitForQuestionBody(timeoutMs) {
+    return new Promise((resolve) => {
+      if (document.querySelector('.question-body p.card-text')) { resolve(true); return; }
+      const t0 = Date.now();
+      const iv = setInterval(() => {
+        if (document.querySelector('.question-body p.card-text')) { clearInterval(iv); resolve(true); }
+        else if (Date.now() - t0 > timeoutMs) { clearInterval(iv); resolve(false); }
+      }, 200);
+    });
+  }
+
+  async function refreshLoopUI() {
+    const btn = document.getElementById('etk-loop-btn');
+    if (!btn) return;
+    const state = await loadLoop();
+    if (state && state.active) {
+      btn.textContent = `⏸ ${state.savedCount || 0}/${state.targetN}`;
+      btn.title = `Đang loop ${state.examCode} → Q${state.targetN}. Bấm để dừng.`;
+      btn.classList.add('etk-loop-active');
+    } else {
+      btn.textContent = '🔁 Auto';
+      btn.title = 'Auto-loop & autosave theo mã đề';
+      btn.classList.remove('etk-loop-active');
+    }
+  }
+
+  async function loopTick() {
+    if (loopTickFired) return;
+    loopTickFired = true;
+
+    const state = await loadLoop();
+    if (!state || !state.active) return;
+
+    const viewParts = parseViewUrl(location.href);
+    if (!viewParts) {
+      await clearLoop();
+      toast('⛔ Loop dừng: không phải trang câu hỏi');
+      refreshLoopUI();
+      return;
+    }
+
+    await waitForQuestionBody(8000);
+    const meta = parseExamMeta(location.href);
+    let reachedTarget = false;
+
+    if (meta && meta.examCode === state.examCode) {
+      state.misses = 0;
+      if (meta.question > state.targetN) {
+        reachedTarget = true;
+      } else {
+        const data = scrapeQuestion();
+        if (data && data.question) {
+          const bank = await loadBank();
+          bank[meta.examCode] = bank[meta.examCode] || {};
+          const key = data.questionId ? String(data.questionId) : `${meta.topic}-${meta.question}`;
+          const wasNew = !bank[meta.examCode][key];
+          bank[meta.examCode][key] = {
+            ...data,
+            url: location.href,
+            examCode: meta.examCode,
+            vendor: meta.vendor,
+            topic: meta.topic,
+            questionNumber: meta.question,
+            savedAt: Date.now(),
+          };
+          await saveBank(bank);
+          if (wasNew) state.savedCount = (state.savedCount || 0) + 1;
+          state.lastQ = meta.question;
+        }
+        if (meta.question >= state.targetN) reachedTarget = true;
+      }
+    } else {
+      state.misses = (state.misses || 0) + 1;
+    }
+
+    await saveLoopState(state);
+    refreshLoopUI();
+
+    if (reachedTarget) {
+      await clearLoop();
+      toast(`✅ Loop ${state.examCode} xong: đã lưu ${state.savedCount} câu (tới Q${state.lastQ || state.targetN})`);
+      refreshLoopUI();
+      return;
+    }
+
+    if (state.misses >= (state.maxMisses || 25)) {
+      await clearLoop();
+      toast(`⛔ Loop dừng: ${state.maxMisses} URL liên tiếp không khớp ${state.examCode}`);
+      refreshLoopUI();
+      return;
+    }
+
+    setTimeout(() => {
+      const next = buildUrl(viewParts, 1);
+      if (next) location.href = next;
+    }, Math.max(500, state.delayMs || 1800));
+  }
+
+  function openLoopDialog() {
+    const existing = document.getElementById('etk-loop-dialog');
+    if (existing) { existing.remove(); return; }
+
+    const meta = parseExamMeta(location.href);
+    const viewParts = parseViewUrl(location.href);
+    if (!viewParts) { toast('Hãy mở 1 câu hỏi rồi mới chạy loop'); return; }
+
+    const dlg = document.createElement('div');
+    dlg.id = 'etk-loop-dialog';
+
+    const header = document.createElement('div');
+    header.className = 'etk-loop-header';
+    header.textContent = '🔁 Auto-loop & autosave';
+    dlg.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'etk-loop-body';
+
+    function makeField(labelText, input) {
+      const wrap = document.createElement('label');
+      wrap.className = 'etk-loop-field';
+      const span = document.createElement('span');
+      span.textContent = labelText;
+      wrap.appendChild(span);
+      wrap.appendChild(input);
+      return wrap;
+    }
+
+    const codeInput = document.createElement('input');
+    codeInput.type = 'text';
+    codeInput.value = meta ? meta.examCode : '';
+    codeInput.placeholder = 'vd AB-731';
+    body.appendChild(makeField('Mã đề chỉ định', codeInput));
+
+    const nInput = document.createElement('input');
+    nInput.type = 'number';
+    nInput.min = '1';
+    nInput.value = '50';
+    body.appendChild(makeField('Tới câu N', nInput));
+
+    const delayInput = document.createElement('input');
+    delayInput.type = 'number';
+    delayInput.min = '500';
+    delayInput.step = '100';
+    delayInput.value = '1800';
+    body.appendChild(makeField('Delay mỗi bước (ms)', delayInput));
+
+    const missInput = document.createElement('input');
+    missInput.type = 'number';
+    missInput.min = '5';
+    missInput.value = '25';
+    body.appendChild(makeField('Bỏ qua tối đa (URL không khớp liên tiếp)', missInput));
+
+    const hint = document.createElement('div');
+    hint.className = 'etk-loop-hint';
+    const hereQ = meta ? `Q${meta.question}` : '?';
+    hint.innerHTML =
+      `Loop chỉ lưu câu khi <strong>mã đề khớp</strong>. ` +
+      `Đi từ câu hiện tại (${hereQ}) theo ID tăng dần. ` +
+      (meta && meta.question > 1 ? '<br>⚠️ Để lưu từ Q1, hãy mở Q1 trước khi bắt đầu.' : '') +
+      '<br>Chỉ chạy ở 1 tab. Đóng tab giữa chừng → mở lại trang examtopics sẽ tiếp tục loop.';
+    body.appendChild(hint);
+
+    dlg.appendChild(body);
+
+    const footer = document.createElement('div');
+    footer.className = 'etk-loop-footer';
+    const startBtn = document.createElement('button');
+    startBtn.type = 'button';
+    startBtn.className = 'etk-bank-action';
+    startBtn.textContent = 'Bắt đầu';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'etk-bank-action';
+    cancelBtn.textContent = 'Hủy';
+    footer.appendChild(startBtn);
+    footer.appendChild(cancelBtn);
+    dlg.appendChild(footer);
+
+    cancelBtn.addEventListener('click', () => dlg.remove());
+    startBtn.addEventListener('click', async () => {
+      const code = (codeInput.value || '').trim().toUpperCase();
+      const n = parseInt(nInput.value, 10);
+      const delay = parseInt(delayInput.value, 10) || 1800;
+      const misses = parseInt(missInput.value, 10) || 25;
+      if (!code) { toast('Nhập mã đề'); return; }
+      if (!n || n < 1) { toast('Nhập N hợp lệ'); return; }
+      await saveLoopState({
+        active: true,
+        examCode: code,
+        targetN: n,
+        delayMs: delay,
+        maxMisses: misses,
+        misses: 0,
+        savedCount: 0,
+        lastQ: 0,
+        startedAt: Date.now(),
+      });
+      dlg.remove();
+      toast(`▶ Loop ${code} → Q${n} bắt đầu`);
+      refreshLoopUI();
+      loopTickFired = false;
+      setTimeout(loopTick, 400);
+    });
+
+    document.body.appendChild(dlg);
+  }
+
   function mkBtn(label, title) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -459,6 +690,22 @@
         wrapper.appendChild(save);
       }
 
+      const auto = mkBtn('🔁 Auto', 'Auto-loop & autosave theo mã đề');
+      auto.id = 'etk-loop-btn';
+      auto.addEventListener('click', async () => {
+        const state = await loadLoop();
+        if (state && state.active) {
+          if (confirm(`Dừng loop ${state.examCode} (đã lưu ${state.savedCount || 0}/${state.targetN})?`)) {
+            await clearLoop();
+            toast('⛔ Đã dừng loop');
+            refreshLoopUI();
+          }
+        } else {
+          openLoopDialog();
+        }
+      });
+      wrapper.appendChild(auto);
+
       const next = mkBtn('Next ▶', 'Câu sau (' + (viewParts.number + 1) + ')');
       next.addEventListener('click', () => {
         const url = buildUrl(viewParts, 1);
@@ -475,11 +722,13 @@
   }
 
   function tryInjectUI() {
-    if (document.body) {
+    const run = () => {
       injectFloatingUI();
-    } else {
-      document.addEventListener('DOMContentLoaded', injectFloatingUI, { once: true });
-    }
+      refreshLoopUI();
+      setTimeout(loopTick, 600);
+    };
+    if (document.body) run();
+    else document.addEventListener('DOMContentLoaded', run, { once: true });
   }
   tryInjectUI();
 })();

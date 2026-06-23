@@ -6,6 +6,7 @@ Chrome extension (Manifest V3) cho `examtopics.com`:
 - Khôi phục scroll khi trang bị khoá bởi `modal-open` / `overflow: hidden`.
 - Nút **◀ Prev / Next ▶** cố định ở góc dưới phải khi xem một câu trong `/discussions/<exam>/view/<n>-...` để nhảy nhanh sang câu trước / sau.
 - Nút **💾 Save** lưu câu hiện tại (đề bài, A/B/C/D, đáp án được vote nhiều nhất, link ảnh) vào bank cục bộ — gom theo **mã đề** trích từ URL (vd `AB-731`, `AZ-104`).
+- Nút **🔁 Auto** mở dialog đặt **mã đề chỉ định + tới câu N**, sau đó tự động đi qua từng câu và **autosave** câu nào trùng mã đề. Dừng khi đạt Q `N` hoặc bỏ qua quá nhiều URL không khớp liên tiếp. Trạng thái loop survive reload, có nút Stop.
 - Nút **📚 Bank** mở panel xem các câu đã lưu, đổi giữa các mã đề, xoá từng câu hoặc **Export JSON** cả bộ.
 
 ## Cài đặt

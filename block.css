@@ -234,3 +234,79 @@ body.modal-open {
 #etk-bank-panel .etk-bank-danger:hover {
   background: #ffebee !important;
 }
+
+#etk-nav-wrapper .etk-nav-btn.etk-loop-active {
+  background: #c62828 !important;
+  animation: etk-loop-pulse 1.4s ease-in-out infinite !important;
+}
+
+@keyframes etk-loop-pulse {
+  0%, 100% { opacity: 0.95; }
+  50% { opacity: 0.65; }
+}
+
+#etk-loop-dialog {
+  position: fixed !important;
+  right: 16px !important;
+  bottom: 72px !important;
+  z-index: 2147483647 !important;
+  width: 360px !important;
+  background: #fff !important;
+  color: #222 !important;
+  border: 1px solid #ddd !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25) !important;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  overflow: hidden !important;
+}
+
+#etk-loop-dialog .etk-loop-header {
+  padding: 10px 12px !important;
+  background: #f6821f !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+}
+
+#etk-loop-dialog .etk-loop-body {
+  padding: 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+}
+
+#etk-loop-dialog .etk-loop-field {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  font-size: 12px !important;
+  color: #333 !important;
+  font-weight: 600 !important;
+}
+
+#etk-loop-dialog .etk-loop-field input {
+  padding: 6px 8px !important;
+  border: 1px solid #ccc !important;
+  border-radius: 4px !important;
+  font: 400 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  color: #222 !important;
+  background: #fff !important;
+}
+
+#etk-loop-dialog .etk-loop-hint {
+  font-size: 11px !important;
+  color: #666 !important;
+  line-height: 1.5 !important;
+  background: #fff8e6 !important;
+  border-left: 3px solid #f6821f !important;
+  padding: 8px 10px !important;
+  border-radius: 0 4px 4px 0 !important;
+}
+
+#etk-loop-dialog .etk-loop-footer {
+  display: flex !important;
+  gap: 8px !important;
+  padding: 10px 12px !important;
+  border-top: 1px solid #eee !important;
+  background: #fafafa !important;
+}

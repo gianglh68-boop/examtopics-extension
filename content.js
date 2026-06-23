@@ -3,6 +3,7 @@
 
   const POPUP_TEXT = 'this section is not available anymore';
   const ALT_POPUP_TEXT = 'please use the main exam page';
+  const BANK_KEY = 'etkBank';
 
   let busy = false;
   let throttle = 0;
@@ -82,6 +83,7 @@
   }
 
   const VIEW_URL_REGEX = /^(https?:\/\/[^/]+\/discussions\/[^/]+\/view\/)(\d+)(-[^/]*\/?)/i;
+  const EXAM_META_REGEX = /\/discussions\/([^/]+)\/view\/\d+-exam-(.+?)-topic-(\d+)-question-(\d+)-discussion/i;
 
   function parseViewUrl(href) {
     const match = href.match(VIEW_URL_REGEX);
@@ -95,51 +97,389 @@
     return parts.prefix + next + parts.suffix;
   }
 
-  function injectNavButtons() {
+  function parseExamMeta(href) {
+    const m = href.match(EXAM_META_REGEX);
+    if (!m) return null;
+    return {
+      vendor: m[1],
+      examCode: m[2].toUpperCase(),
+      topic: parseInt(m[3], 10),
+      question: parseInt(m[4], 10),
+    };
+  }
+
+  function nodesToText(parent, imageSink) {
+    let out = '';
+    parent.childNodes.forEach((node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        out += node.textContent;
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'br') {
+        out += '\n';
+      } else if (tag === 'img') {
+        const src = node.getAttribute('src');
+        if (src) {
+          if (imageSink) imageSink.push(src);
+          out += `[IMG: ${src}]`;
+        }
+      } else {
+        out += nodesToText(node, imageSink);
+      }
+    });
+    return out;
+  }
+
+  function scrapeQuestion() {
+    const body = document.querySelector('.question-body');
+    if (!body) return null;
+    const card = body.querySelector('p.card-text') || body.querySelector('.card-text');
+    if (!card) return null;
+
+    const images = [];
+    const text = nodesToText(card, images).replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+
+    const options = [];
+    body.querySelectorAll('.question-choices-container li.multi-choice-item').forEach((li) => {
+      const letterEl = li.querySelector('.multi-choice-letter');
+      const letter = letterEl ? letterEl.getAttribute('data-choice-letter') : null;
+      if (!letter) return;
+      const optImages = [];
+      let optText = '';
+      li.childNodes.forEach((node) => {
+        if (node === letterEl) return;
+        if (node.nodeType === Node.TEXT_NODE) {
+          optText += node.textContent;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          if (node.contains(letterEl)) return;
+          const tag = node.tagName.toLowerCase();
+          if (tag === 'br') optText += '\n';
+          else if (tag === 'img') {
+            const src = node.getAttribute('src');
+            if (src) { optImages.push(src); optText += `[IMG: ${src}]`; }
+          } else {
+            optText += nodesToText(node, optImages);
+          }
+        }
+      });
+      const opt = { letter, text: optText.trim(), isCorrect: li.classList.contains('correct-hidden') };
+      if (optImages.length) opt.images = optImages;
+      options.push(opt);
+    });
+
+    let voted = null;
+    const voteScript = body.querySelector('.voted-answers-tally script[type="application/json"]');
+    if (voteScript) {
+      try { voted = JSON.parse(voteScript.textContent); } catch (_) {}
+    }
+    let suggestedAnswer = null;
+    if (Array.isArray(voted) && voted.length) {
+      const top = voted.find((v) => v.is_most_voted) || voted[0];
+      if (top) suggestedAnswer = top.voted_answers;
+    }
+    if (!suggestedAnswer) {
+      const correct = options.find((o) => o.isCorrect);
+      if (correct) suggestedAnswer = correct.letter;
+    }
+
+    const idAttr = body.getAttribute('data-id');
+    return {
+      questionId: idAttr ? parseInt(idAttr, 10) : null,
+      question: text,
+      images,
+      options,
+      suggestedAnswer,
+      voted,
+    };
+  }
+
+  function loadBank() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get(BANK_KEY, (result) => {
+          resolve((result && result[BANK_KEY]) || {});
+        });
+      } catch (_) { resolve({}); }
+    });
+  }
+
+  function saveBank(bank) {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.set({ [BANK_KEY]: bank }, () => resolve());
+      } catch (_) { resolve(); }
+    });
+  }
+
+  async function saveCurrentQuestion() {
+    const meta = parseExamMeta(location.href);
+    if (!meta) { toast('Không nhận diện được mã đề từ URL'); return; }
+    const data = scrapeQuestion();
+    if (!data || !data.question) { toast('Không tìm thấy nội dung câu hỏi'); return; }
+
+    const bank = await loadBank();
+    bank[meta.examCode] = bank[meta.examCode] || {};
+    const key = data.questionId ? String(data.questionId) : `${meta.topic}-${meta.question}`;
+    const existed = !!bank[meta.examCode][key];
+    bank[meta.examCode][key] = {
+      ...data,
+      url: location.href,
+      examCode: meta.examCode,
+      vendor: meta.vendor,
+      topic: meta.topic,
+      questionNumber: meta.question,
+      savedAt: Date.now(),
+    };
+    await saveBank(bank);
+    toast(`${existed ? 'Đã cập nhật' : 'Đã lưu'} ${meta.examCode} • Topic ${meta.topic} • Q${meta.question}`);
+  }
+
+  function toast(msg) {
+    const old = document.getElementById('etk-toast');
+    if (old) old.remove();
+    const el = document.createElement('div');
+    el.id = 'etk-toast';
+    el.textContent = msg;
+    (document.body || document.documentElement).appendChild(el);
+    setTimeout(() => el.classList.add('etk-toast-fade'), 1800);
+    setTimeout(() => el.remove(), 2400);
+  }
+
+  async function openBankPanel() {
+    const existing = document.getElementById('etk-bank-panel');
+    if (existing) { existing.remove(); return; }
+
+    const meta = parseExamMeta(location.href);
+    const bank = await loadBank();
+    const codes = Object.keys(bank).sort();
+    const activeCode = (meta && bank[meta.examCode]) ? meta.examCode : (codes[0] || (meta && meta.examCode) || '');
+
+    const panel = document.createElement('div');
+    panel.id = 'etk-bank-panel';
+
+    const header = document.createElement('div');
+    header.className = 'etk-bank-header';
+    const title = document.createElement('strong');
+    title.textContent = 'Bank';
+    header.appendChild(title);
+
+    const select = document.createElement('select');
+    select.className = 'etk-bank-select';
+    if (codes.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '(chưa có đề nào)';
+      select.appendChild(opt);
+      select.disabled = true;
+    } else {
+      codes.forEach((code) => {
+        const opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = `${code} (${Object.keys(bank[code]).length})`;
+        if (code === activeCode) opt.selected = true;
+        select.appendChild(opt);
+      });
+    }
+    header.appendChild(select);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'etk-bank-close';
+    closeBtn.type = 'button';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', () => panel.remove());
+    header.appendChild(closeBtn);
+
+    panel.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'etk-bank-list';
+    panel.appendChild(list);
+
+    const footer = document.createElement('div');
+    footer.className = 'etk-bank-footer';
+    const exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.className = 'etk-bank-action';
+    exportBtn.textContent = 'Export JSON';
+    exportBtn.addEventListener('click', () => exportBank(select.value));
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'etk-bank-action etk-bank-danger';
+    clearBtn.textContent = 'Clear';
+    clearBtn.addEventListener('click', async () => {
+      const code = select.value;
+      if (!code) return;
+      if (!confirm(`Xoá toàn bộ bank ${code}?`)) return;
+      const b = await loadBank();
+      delete b[code];
+      await saveBank(b);
+      panel.remove();
+      openBankPanel();
+    });
+    footer.appendChild(exportBtn);
+    footer.appendChild(clearBtn);
+    panel.appendChild(footer);
+
+    select.addEventListener('change', () => renderBankList(list, select.value));
+    (document.body || document.documentElement).appendChild(panel);
+    if (select.value) renderBankList(list, select.value);
+    else renderBankList(list, '');
+  }
+
+  async function renderBankList(container, code) {
+    container.innerHTML = '';
+    if (!code) {
+      const empty = document.createElement('div');
+      empty.className = 'etk-bank-empty';
+      empty.textContent = 'Bấm 💾 Save trên một câu để bắt đầu.';
+      container.appendChild(empty);
+      return;
+    }
+    const bank = await loadBank();
+    const items = bank[code] || {};
+    const keys = Object.keys(items).sort((a, b) => (items[a].questionNumber || 0) - (items[b].questionNumber || 0));
+    if (keys.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'etk-bank-empty';
+      empty.textContent = 'Chưa có câu nào trong bank này.';
+      container.appendChild(empty);
+      return;
+    }
+    keys.forEach((k) => {
+      const q = items[k];
+      const row = document.createElement('div');
+      row.className = 'etk-bank-row';
+
+      const meta = document.createElement('div');
+      meta.className = 'etk-bank-row-meta';
+      const num = document.createElement('span');
+      num.className = 'etk-bank-row-num';
+      num.textContent = `T${q.topic || '?'}·Q${q.questionNumber || '?'}`;
+      meta.appendChild(num);
+      if (q.suggestedAnswer) {
+        const ans = document.createElement('span');
+        ans.className = 'etk-bank-row-ans';
+        ans.textContent = q.suggestedAnswer;
+        meta.appendChild(ans);
+      }
+      if (q.images && q.images.length) {
+        const img = document.createElement('span');
+        img.className = 'etk-bank-row-img';
+        img.textContent = `🖼${q.images.length}`;
+        meta.appendChild(img);
+      }
+      row.appendChild(meta);
+
+      const body = document.createElement('div');
+      body.className = 'etk-bank-row-body';
+      const preview = (q.question || '').replace(/\s+/g, ' ').slice(0, 140);
+      body.textContent = preview + ((q.question || '').length > 140 ? '…' : '');
+      row.appendChild(body);
+
+      const actions = document.createElement('div');
+      actions.className = 'etk-bank-row-actions';
+      const open = document.createElement('a');
+      open.href = q.url;
+      open.target = '_blank';
+      open.rel = 'noopener';
+      open.textContent = 'Open';
+      actions.appendChild(open);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.textContent = 'Delete';
+      del.addEventListener('click', async () => {
+        const b = await loadBank();
+        if (b[code]) {
+          delete b[code][k];
+          if (Object.keys(b[code]).length === 0) delete b[code];
+        }
+        await saveBank(b);
+        renderBankList(container, b[code] ? code : '');
+      });
+      actions.appendChild(del);
+      row.appendChild(actions);
+
+      container.appendChild(row);
+    });
+  }
+
+  async function exportBank(code) {
+    if (!code) return;
+    const bank = await loadBank();
+    const items = bank[code] || {};
+    const payload = {
+      examCode: code,
+      exportedAt: new Date().toISOString(),
+      count: Object.keys(items).length,
+      questions: Object.values(items).sort((a, b) => (a.questionNumber || 0) - (b.questionNumber || 0)),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `examtopics-bank-${code}-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  }
+
+  function mkBtn(label, title) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'etk-nav-btn';
+    b.textContent = label;
+    if (title) b.title = title;
+    return b;
+  }
+
+  function injectFloatingUI() {
     if (window.self !== window.top) return;
     if (document.getElementById('etk-nav-wrapper')) return;
-    const parts = parseViewUrl(window.location.href);
-    if (!parts) return;
 
     const wrapper = document.createElement('div');
     wrapper.id = 'etk-nav-wrapper';
 
-    const prev = document.createElement('button');
-    prev.type = 'button';
-    prev.id = 'etk-nav-prev';
-    prev.className = 'etk-nav-btn';
-    prev.textContent = '◀ Prev';
-    prev.title = 'Câu trước (' + (parts.number - 1) + ')';
+    const viewParts = parseViewUrl(location.href);
+    const examMeta = parseExamMeta(location.href);
 
-    const next = document.createElement('button');
-    next.type = 'button';
-    next.id = 'etk-nav-next';
-    next.className = 'etk-nav-btn';
-    next.textContent = 'Next ▶';
-    next.title = 'Câu sau (' + (parts.number + 1) + ')';
+    if (viewParts) {
+      const prev = mkBtn('◀ Prev', 'Câu trước (' + (viewParts.number - 1) + ')');
+      if (viewParts.number <= 1) prev.disabled = true;
+      prev.addEventListener('click', () => {
+        const url = buildUrl(viewParts, -1);
+        if (url) location.href = url;
+      });
+      wrapper.appendChild(prev);
 
-    prev.addEventListener('click', () => {
-      const url = buildUrl(parts, -1);
-      if (url) window.location.href = url;
-    });
-    next.addEventListener('click', () => {
-      const url = buildUrl(parts, 1);
-      if (url) window.location.href = url;
-    });
+      if (examMeta) {
+        const save = mkBtn('💾 Save', `Lưu vào bank ${examMeta.examCode}`);
+        save.addEventListener('click', saveCurrentQuestion);
+        wrapper.appendChild(save);
+      }
 
-    if (parts.number <= 1) prev.disabled = true;
+      const next = mkBtn('Next ▶', 'Câu sau (' + (viewParts.number + 1) + ')');
+      next.addEventListener('click', () => {
+        const url = buildUrl(viewParts, 1);
+        if (url) location.href = url;
+      });
+      wrapper.appendChild(next);
+    }
 
-    wrapper.appendChild(prev);
-    wrapper.appendChild(next);
+    const bankBtn = mkBtn('📚 Bank', 'Xem bank đã lưu');
+    bankBtn.addEventListener('click', openBankPanel);
+    wrapper.appendChild(bankBtn);
+
     (document.body || document.documentElement).appendChild(wrapper);
   }
 
-  function tryInjectNav() {
+  function tryInjectUI() {
     if (document.body) {
-      injectNavButtons();
+      injectFloatingUI();
     } else {
-      document.addEventListener('DOMContentLoaded', injectNavButtons, { once: true });
+      document.addEventListener('DOMContentLoaded', injectFloatingUI, { once: true });
     }
   }
-  tryInjectNav();
+  tryInjectUI();
 })();

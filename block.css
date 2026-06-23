@@ -49,3 +49,188 @@ body.modal-open {
   opacity: 0.6 !important;
   transform: none !important;
 }
+
+#etk-toast {
+  position: fixed !important;
+  bottom: 80px !important;
+  right: 16px !important;
+  z-index: 2147483647 !important;
+  max-width: 320px !important;
+  padding: 10px 14px !important;
+  background: #222 !important;
+  color: #fff !important;
+  font: 600 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  opacity: 0.95 !important;
+  transition: opacity 0.4s ease !important;
+}
+
+#etk-toast.etk-toast-fade {
+  opacity: 0 !important;
+}
+
+#etk-bank-panel {
+  position: fixed !important;
+  right: 16px !important;
+  bottom: 72px !important;
+  z-index: 2147483647 !important;
+  width: 420px !important;
+  max-height: 70vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: #fff !important;
+  color: #222 !important;
+  border: 1px solid #ddd !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25) !important;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  overflow: hidden !important;
+}
+
+#etk-bank-panel .etk-bank-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 10px 12px !important;
+  border-bottom: 1px solid #eee !important;
+  background: #f6821f !important;
+  color: #fff !important;
+}
+
+#etk-bank-panel .etk-bank-header strong {
+  font-size: 14px !important;
+}
+
+#etk-bank-panel .etk-bank-select {
+  flex: 1 !important;
+  padding: 4px 6px !important;
+  border-radius: 4px !important;
+  border: 1px solid #ccc !important;
+  background: #fff !important;
+  color: #222 !important;
+  font: 600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+#etk-bank-panel .etk-bank-close {
+  background: transparent !important;
+  border: none !important;
+  color: #fff !important;
+  font-size: 16px !important;
+  cursor: pointer !important;
+  padding: 0 4px !important;
+  line-height: 1 !important;
+}
+
+#etk-bank-panel .etk-bank-list {
+  flex: 1 1 auto !important;
+  overflow-y: auto !important;
+  padding: 4px 0 !important;
+}
+
+#etk-bank-panel .etk-bank-empty {
+  padding: 24px 16px !important;
+  text-align: center !important;
+  color: #888 !important;
+}
+
+#etk-bank-panel .etk-bank-row {
+  padding: 8px 12px !important;
+  border-bottom: 1px solid #f0f0f0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+}
+
+#etk-bank-panel .etk-bank-row:last-child {
+  border-bottom: none !important;
+}
+
+#etk-bank-panel .etk-bank-row-meta {
+  display: flex !important;
+  gap: 6px !important;
+  align-items: center !important;
+  font-size: 11px !important;
+}
+
+#etk-bank-panel .etk-bank-row-num {
+  background: #eee !important;
+  color: #333 !important;
+  padding: 2px 6px !important;
+  border-radius: 3px !important;
+  font-weight: 700 !important;
+}
+
+#etk-bank-panel .etk-bank-row-ans {
+  background: #2e7d32 !important;
+  color: #fff !important;
+  padding: 2px 6px !important;
+  border-radius: 3px !important;
+  font-weight: 700 !important;
+}
+
+#etk-bank-panel .etk-bank-row-img {
+  background: #1976d2 !important;
+  color: #fff !important;
+  padding: 2px 6px !important;
+  border-radius: 3px !important;
+}
+
+#etk-bank-panel .etk-bank-row-body {
+  color: #333 !important;
+  font-size: 12px !important;
+}
+
+#etk-bank-panel .etk-bank-row-actions {
+  display: flex !important;
+  gap: 8px !important;
+  font-size: 11px !important;
+}
+
+#etk-bank-panel .etk-bank-row-actions a,
+#etk-bank-panel .etk-bank-row-actions button {
+  background: transparent !important;
+  border: none !important;
+  color: #f6821f !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  text-decoration: none !important;
+  font-weight: 600 !important;
+}
+
+#etk-bank-panel .etk-bank-row-actions button:hover,
+#etk-bank-panel .etk-bank-row-actions a:hover {
+  text-decoration: underline !important;
+}
+
+#etk-bank-panel .etk-bank-footer {
+  display: flex !important;
+  gap: 8px !important;
+  padding: 8px 12px !important;
+  border-top: 1px solid #eee !important;
+  background: #fafafa !important;
+}
+
+#etk-bank-panel .etk-bank-action {
+  flex: 1 !important;
+  padding: 6px 10px !important;
+  border: 1px solid #ccc !important;
+  background: #fff !important;
+  color: #333 !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  font: 600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+#etk-bank-panel .etk-bank-action:hover {
+  background: #f5f5f5 !important;
+}
+
+#etk-bank-panel .etk-bank-danger {
+  color: #c62828 !important;
+  border-color: #c62828 !important;
+}
+
+#etk-bank-panel .etk-bank-danger:hover {
+  background: #ffebee !important;
+}

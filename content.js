@@ -208,10 +208,14 @@
   }
 
   function saveBank(bank) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       try {
-        chrome.storage.local.set({ [BANK_KEY]: bank }, () => resolve());
-      } catch (_) { resolve(); }
+        chrome.storage.local.set({ [BANK_KEY]: bank }, () => {
+          const err = chrome.runtime && chrome.runtime.lastError;
+          if (err) { console.error('[ETK] saveBank failed', err); reject(err); }
+          else resolve();
+        });
+      } catch (e) { console.error('[ETK] saveBank threw', e); reject(e); }
     });
   }
 
@@ -460,6 +464,30 @@
     });
   }
 
+  function refreshOpenBankPanel() {
+    const panel = document.getElementById('etk-bank-panel');
+    if (!panel) return;
+    const select = panel.querySelector('.etk-bank-select');
+    const list = panel.querySelector('.etk-bank-list');
+    if (!select || !list) return;
+    const code = select.value;
+    loadBank().then((bank) => {
+      [...select.options].forEach((opt) => {
+        if (bank[opt.value]) opt.textContent = `${opt.value} (${Object.keys(bank[opt.value]).length})`;
+      });
+      const codes = Object.keys(bank).sort();
+      codes.forEach((c) => {
+        if (![...select.options].some((o) => o.value === c)) {
+          const opt = document.createElement('option');
+          opt.value = c;
+          opt.textContent = `${c} (${Object.keys(bank[c]).length})`;
+          select.appendChild(opt);
+        }
+      });
+      renderBankList(list, code);
+    });
+  }
+
   async function refreshLoopUI() {
     const btn = document.getElementById('etk-loop-btn');
     if (!btn) return;
@@ -490,21 +518,24 @@
       return;
     }
 
-    await waitForQuestionBody(8000);
+    const bodyOk = await waitForQuestionBody(8000);
     const meta = parseExamMeta(location.href);
     let reachedTarget = false;
+    let stepMsg = '';
+
+    console.log('[ETK Loop] tick', { url: location.href, meta, target: state.examCode, bodyOk });
 
     if (meta && meta.examCode === state.examCode) {
       state.misses = 0;
       if (meta.question > state.targetN) {
         reachedTarget = true;
+        stepMsg = `Đạt Q${meta.question} > N${state.targetN}, dừng`;
       } else {
         const data = scrapeQuestion();
         if (data && data.question) {
           const bank = await loadBank();
           bank[meta.examCode] = bank[meta.examCode] || {};
           const key = data.questionId ? String(data.questionId) : `${meta.topic}-${meta.question}`;
-          const wasNew = !bank[meta.examCode][key];
           bank[meta.examCode][key] = {
             ...data,
             url: location.href,
@@ -514,15 +545,31 @@
             questionNumber: meta.question,
             savedAt: Date.now(),
           };
-          await saveBank(bank);
-          if (wasNew) state.savedCount = (state.savedCount || 0) + 1;
-          state.lastQ = meta.question;
+          try {
+            await saveBank(bank);
+            state.savedCount = (state.savedCount || 0) + 1;
+            state.lastQ = meta.question;
+            stepMsg = `✓ Q${meta.question} (${state.savedCount}/${state.targetN})`;
+            console.log('[ETK Loop] saved', meta.examCode, 'Q' + meta.question, key);
+            refreshOpenBankPanel();
+          } catch (e) {
+            stepMsg = `⚠ Q${meta.question} storage lỗi: ${e && e.message ? e.message : e}`;
+            console.error('[ETK Loop] save threw', e);
+          }
+        } else {
+          stepMsg = `⚠ Q${meta.question} match nhưng scrape rỗng — bỏ qua`;
+          console.warn('[ETK Loop] scrape returned empty for', location.href, data);
         }
         if (meta.question >= state.targetN) reachedTarget = true;
       }
     } else {
       state.misses = (state.misses || 0) + 1;
+      const got = meta ? meta.examCode : '?';
+      stepMsg = `→ skip ${got} (${state.misses}/${state.maxMisses})`;
+      console.log('[ETK Loop] miss', { got, want: state.examCode, misses: state.misses });
     }
+
+    toast(stepMsg);
 
     await saveLoopState(state);
     refreshLoopUI();

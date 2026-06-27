@@ -493,8 +493,10 @@
     if (!btn) return;
     const state = await loadLoop();
     if (state && state.active) {
-      btn.textContent = `⏸ ${state.savedCount || 0}/${state.targetN}`;
-      btn.title = `Đang loop ${state.examCode} → Q${state.targetN}. Bấm để dừng.`;
+      const sv = state.savedCount || 0;
+      const dup = state.dupCount || 0;
+      btn.textContent = dup ? `⏸ ${sv}+${dup}d/${state.targetN}` : `⏸ ${sv}/${state.targetN}`;
+      btn.title = `Đang loop ${state.examCode} → Q${state.targetN} (saved ${sv}, dup ${dup}). Bấm để dừng.`;
       btn.classList.add('etk-loop-active');
     } else {
       btn.textContent = '🔁 Auto';
@@ -536,25 +538,32 @@
           const bank = await loadBank();
           bank[meta.examCode] = bank[meta.examCode] || {};
           const key = data.questionId ? String(data.questionId) : `${meta.topic}-${meta.question}`;
-          bank[meta.examCode][key] = {
-            ...data,
-            url: location.href,
-            examCode: meta.examCode,
-            vendor: meta.vendor,
-            topic: meta.topic,
-            questionNumber: meta.question,
-            savedAt: Date.now(),
-          };
-          try {
-            await saveBank(bank);
-            state.savedCount = (state.savedCount || 0) + 1;
+          if (bank[meta.examCode][key]) {
+            state.dupCount = (state.dupCount || 0) + 1;
             state.lastQ = meta.question;
-            stepMsg = `✓ Q${meta.question} (${state.savedCount}/${state.targetN})`;
-            console.log('[ETK Loop] saved', meta.examCode, 'Q' + meta.question, key);
-            refreshOpenBankPanel();
-          } catch (e) {
-            stepMsg = `⚠ Q${meta.question} storage lỗi: ${e && e.message ? e.message : e}`;
-            console.error('[ETK Loop] save threw', e);
+            stepMsg = `↺ Q${meta.question} đã có trong bank — bỏ qua (dup ${state.dupCount})`;
+            console.log('[ETK Loop] dup skip', meta.examCode, 'Q' + meta.question, key);
+          } else {
+            bank[meta.examCode][key] = {
+              ...data,
+              url: location.href,
+              examCode: meta.examCode,
+              vendor: meta.vendor,
+              topic: meta.topic,
+              questionNumber: meta.question,
+              savedAt: Date.now(),
+            };
+            try {
+              await saveBank(bank);
+              state.savedCount = (state.savedCount || 0) + 1;
+              state.lastQ = meta.question;
+              stepMsg = `✓ Q${meta.question} (${state.savedCount}/${state.targetN})`;
+              console.log('[ETK Loop] saved', meta.examCode, 'Q' + meta.question, key);
+              refreshOpenBankPanel();
+            } catch (e) {
+              stepMsg = `⚠ Q${meta.question} storage lỗi: ${e && e.message ? e.message : e}`;
+              console.error('[ETK Loop] save threw', e);
+            }
           }
         } else {
           stepMsg = `⚠ Q${meta.question} match nhưng scrape rỗng — bỏ qua`;
@@ -576,7 +585,8 @@
 
     if (reachedTarget) {
       await clearLoop();
-      toast(`✅ Loop ${state.examCode} xong: đã lưu ${state.savedCount} câu (tới Q${state.lastQ || state.targetN})`);
+      const dup = state.dupCount || 0;
+      toast(`✅ Loop ${state.examCode} xong: lưu mới ${state.savedCount}, dup ${dup} (tới Q${state.lastQ || state.targetN})`);
       refreshLoopUI();
       return;
     }
@@ -690,6 +700,7 @@
         maxMisses: misses,
         misses: 0,
         savedCount: 0,
+        dupCount: 0,
         lastQ: 0,
         startedAt: Date.now(),
       });
